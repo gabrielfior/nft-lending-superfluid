@@ -121,13 +121,6 @@ describe("Test NFT Superfluid Lending pool", async () => {
     }
 
     xit("user can borrow 100 DAI", async () => {
-        // Todo - Implement send/cancel cashflows
-        // as in https://github.com/superfluid-finance/super-examples/blob/main/projects/tradeable-cashflow/test/TradeableCashflow.test.js
-        // ToDo
-        //  Implement app logic
-        //  - Deploy NFT pool (interestRate 10%)
-        //  - Deposit NFT
-        //  - Borrow 100 DAI (should create a fDAIx flow) - check that flow is created
         const nftTokenId = 1;
 
         await mintNftToOwner(nftTokenId);
@@ -160,7 +153,7 @@ describe("Test NFT Superfluid Lending pool", async () => {
         expect(ownerDaiAmount).to.eq(hre.ethers.utils.parseEther(loanAmount.toString()));
     });
 
-    it('Repay loan and check that flow stopps', async () => {
+    xit('Repay loan and check that flow stopps', async () => {
         // Other test -
         // Repay remaining amount (check that flow stopped)
         const nftTokenId = 2;
@@ -199,12 +192,37 @@ describe("Test NFT Superfluid Lending pool", async () => {
         expect(ownerBalanceDai).to.equal(0);
     });
 
-    xit('a', () => {
+    it('User gets liquidated if delete flow attempt is executed', async () => {
         // Other test
         // - Deposit NFT
         // - Borrow 100 DAI (should create a fDAIx flow) - check that flow is created
         // - Try deleting flow
         // - Assert liquidation occurred
+        const nftTokenId = 3;
+
+        await mintNftToOwner(nftTokenId);
+
+        await nftLendingPoolContract.depositCollateral(nftTokenId);
+
+        const loanAmount = 100;
+        
+        await nftLendingPoolContract.borrowAgainstCollateral(
+            hre.ethers.utils.parseEther(loanAmount.toString()));
+        
+        // Cancel flow rate
+        await daix.deleteFlow({sender: owner.address, receiver: nftLendingPoolContract.address}).exec(owner);
+
+        const updatedOwnerFlowRate = await daix.getNetFlow({
+            account: ownerAddress,
+            providerOrSigner: owner
+        })
+        console.log(`updated ${updatedOwnerFlowRate}`);
+        expect(updatedOwnerFlowRate).to.eq('0');
+        
+
+        // ToDo - Assert liquidation occurred - NFT has been moved
+
+        // ToDo - Assert borrowAmount == 0
 
     });
 
