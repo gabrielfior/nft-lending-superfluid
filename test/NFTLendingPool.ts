@@ -1,12 +1,12 @@
-import { ERC20, SuperToken } from "@superfluid-finance/sdk-core";
+import {SuperToken} from "@superfluid-finance/sdk-core";
 import * as hre from "hardhat";
-import { Provider } from "@ethersproject/providers";
+import {Provider} from "@ethersproject/providers";
+import {MintableNFT, NFTLendingPool, TestToken} from "../typechain-types";
+import {expect} from "chai";
 
 const { Framework } = require("@superfluid-finance/sdk-core");
 const { deployTestFramework } = require("@superfluid-finance/ethereum-contracts/dev-scripts/deploy-test-framework");
 const TestTokenJson = require("@superfluid-finance/ethereum-contracts/build/contracts/TestToken.json");
-import { ERC721, MintableNFT, NFTLendingPool, TestToken } from "../typechain-types";
-import { expect } from "chai";
 
 const thousandEther = hre.ethers.utils.parseEther("1000");
 
@@ -23,6 +23,10 @@ describe("Test NFT Superfluid Lending pool", async () => {
     let hostAddress: string;
     let cfaV1Address: string;
     const interestRate = 10;
+
+    before(async () => {
+        console.log('entered before');
+    });
 
     beforeEach(async () => {
 
@@ -79,23 +83,30 @@ describe("Test NFT Superfluid Lending pool", async () => {
             hostAddress,
             cfaV1Address,
             daix.address,
+            daix.underlyingToken?.address!
         ) as NFTLendingPool;
         console.log('nft lending pool addr', nftLendingPoolContract.address);
+
+        // DAI and DAIx operations
 
         // approving DAIx to spend DAI (Super Token object is not an ethers contract object and has different operation syntax)
         await dai.connect(owner).approve(daix.address, hre.ethers.constants.MaxInt256);
 
-        //minting test DAI
+        // owner
         await dai.connect(owner).mint(owner.address, thousandEther);
-
         // Upgrading all DAI to DAIx
-        const ownerUpgrade = await daix.upgrade({ amount: thousandEther });
-        await ownerUpgrade.exec(owner);
+        await daix.upgrade({ amount: thousandEther }).exec(owner);
+
+        // contract
+        await dai.connect(owner).mint(nftLendingPoolContract.address, thousandEther);
+        await dai.connect(owner).approve(nftLendingPoolContract.address, hre.ethers.constants.MaxInt256);
 
         // transfer to contract
         await daix.transferFrom({sender: owner.address,
-             receiver: nftLendingPoolContract.address,
-             amount: thousandEther.toString()});
+              receiver: nftLendingPoolContract.address,
+              amount: (thousandEther.div(2)).toString()}).exec(owner);
+        
+        console.log('balance owner dai', await dai.balanceOf(owner.address));
 
         const authorize = await daix.authorizeFlowOperatorWithFullControl({ flowOperator: nftLendingPoolContract.address.toLowerCase() });
         await authorize.exec(owner);
@@ -133,7 +144,8 @@ describe("Test NFT Superfluid Lending pool", async () => {
 
         const loanAmount = 100;
         console.log('before');
-        await nftLendingPoolContract.borrowAgainstCollateral(hre.ethers.utils.parseEther(loanAmount.toString()));
+        await nftLendingPoolContract.borrowAgainstCollateral(
+            hre.ethers.utils.parseEther(loanAmount.toString()));
         console.log('after');
 
         const ownerFlowRate = await daix.getNetFlow({
@@ -144,9 +156,8 @@ describe("Test NFT Superfluid Lending pool", async () => {
         const expectedFlowRate = -loanAmount * interestRate / 100;
         expect(parseInt(ownerFlowRate)).to.be.equal(expectedFlowRate);
 
-        // ToDo - DAI balance of owner is totalAmount
-        const ownerBalanceDai = await dai.balanceOf(owner.address);
-        console.log('owner balance dai', ownerBalanceDai);
+        const ownerDaiAmount = await dai.balanceOf(owner.address);
+        expect(ownerDaiAmount).to.eq(hre.ethers.utils.parseEther(loanAmount.toString()));
     });
 
     it('Repay loan and check that flow stopps', async () => {
@@ -169,29 +180,23 @@ describe("Test NFT Superfluid Lending pool", async () => {
 
         await nftLendingPoolContract.borrowAgainstCollateral(hre.ethers.utils.parseEther(loanAmount.toString()));
         console.log('after borrow');
+        console.log('curr balance dai owner', await dai.balanceOf(owner.address));
 
-        const ownerFlowRate = await daix.getNetFlow({
-            account: ownerAddress,
-            providerOrSigner: owner
-        });
 
-        const expectedFlowRate = -loanAmount * interestRate / 100;
-        expect(parseInt(ownerFlowRate)).to.be.equal(expectedFlowRate);
-
-        console.log('borrowAmount', await nftLendingPoolContract.borrowAmount());
+        //const expectedFlowRate = -loanAmount * interestRate / 100;
 
         // repay
         console.log('repay');
-        await nftLendingPoolContract.repay(50);
+        await nftLendingPoolContract.repay(hre.ethers.utils.parseEther(loanAmount.toString()));
         const updatedOwnerFlowRate = await daix.getNetFlow({
             account: ownerAddress,
             providerOrSigner: owner
-        });
-        //expect(updatedOwnerFlowRate).to.eq(0);
+        })
+        console.log(`updated ${updatedOwnerFlowRate}`);
+        expect(updatedOwnerFlowRate).to.eq('0');
 
-        // ToDo - DAI balance of owner is totalAmount
         const ownerBalanceDai = await dai.balanceOf(owner.address);
-        console.log('owner balance dai', ownerBalanceDai);
+        expect(ownerBalanceDai).to.equal(0);
     });
 
     xit('a', () => {

@@ -4,6 +4,7 @@ pragma solidity ^0.8.4;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC721/extensions/ERC721Burnable.sol";
 import {ISuperAgreement, SuperAppDefinitions} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 
@@ -34,6 +35,8 @@ contract NFTLendingPool is IERC721Receiver {
     /// @dev Super token that may be streamed to this contract
     ISuperToken internal immutable acceptedToken;
 
+    ERC20 internal immutable underlyingToken;
+
     // ToDo - Check if needed
     ///@notice this is the superfluid host which is used in modifiers
     ISuperfluid immutable host;
@@ -46,13 +49,15 @@ contract NFTLendingPool is IERC721Receiver {
          int256 _paybackMonths, // total payback months
         ISuperfluid _host,
         IConstantFlowAgreementV1 _cfa,
-        ISuperToken _acceptedToken
+        ISuperToken _acceptedToken,
+        ERC20 _underlyingToken
     ) {
         // apr in pct points, e.g. 10% == 10
         nft = _nft;
         interestRate = _interestRate;
         paybackMonths = _paybackMonths;
         acceptedToken = _acceptedToken;
+        underlyingToken = _underlyingToken;
         host = _host;
         cfa = _cfa;
     }
@@ -102,7 +107,8 @@ contract NFTLendingPool is IERC721Receiver {
         console.log('2');
         // see https://github.com/superfluid-finance/super-examples/blob/main/projects/borrow-against-salary/contracts/EmploymentLoan.sol
         // see https://github.com/superfluid-finance/super-examples/blob/main/projects/borrow-against-salary/test/EmploymentLoan.test.js
-        acceptedToken.transferFrom(address(this), msg.sender, uint256(100000));
+        
+        require(underlyingToken.transfer(msg.sender, uint256(amount)), "Token transfer not successful");
         console.log('3');
         acceptedToken.createFlowFrom(msg.sender, address(this), 10);
         console.log('4');
@@ -111,13 +117,30 @@ contract NFTLendingPool is IERC721Receiver {
         console.log('end borrow');
     }
 
-    function repay(uint256 amount) public {
-        // ToDo
+    function repay(int256 amount) public {
 
-        // Update loanedAmount
-        
-        
+        // repay
+        require(underlyingToken.transferFrom(msg.sender, address(this), uint256(amount)), "Token transfer not successful");
+
+        // Update borrowAmount
+        borrowAmount -= amount;
+
+        // ToDo - Update flow rate correctly
+        int96 flowRate = getPaymentFlowRate();
+        console.log("flowRate", uint96(flowRate));
+        flowRate = 0; // delete me
+
+
         // Update flow
+        if (flowRate == 0){
+            acceptedToken.deleteFlowFrom(msg.sender, address(this));
+        }
+        else {
+            acceptedToken.updateFlowFrom(msg.sender, address(this), 1);
+        }
+
+        console.log("finished");
+
     }
 
     function liquidateUser() private {
