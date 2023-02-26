@@ -7,6 +7,3 @@
     Additionally, if the user repays half of the loan, then the ```repay``` function updates the stream down. Finally, if the user fully repays, the payment stream is cancelled.
     
     Liquidations also happen if the user tries to "cheat", i.e. if he tries to cancel the stream by himself. Liquidation involves seizing the NFT and transferring that to a ```NFTChest``` owned by the NFT Lending contract, which serves as a safe place.
-
-    
-

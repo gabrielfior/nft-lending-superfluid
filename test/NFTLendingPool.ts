@@ -25,8 +25,6 @@ describe("Test NFT Superfluid Lending pool", async () => {
     const interestRate = 10;
 
     before(async () => {
-        console.log('entered before');
-        //get accounts from hardhat
         [owner] = await hre.ethers.getSigners();
         ownerAddress = await owner.getAddress();
         provider = owner.provider!;
@@ -38,14 +36,7 @@ describe("Test NFT Superfluid Lending pool", async () => {
 
         // from https://github.com/superfluid-finance/super-examples/blob/main/projects/tradeable-cashflow/test/TradeableCashflow.test.js
 
-        // //get accounts from hardhat
-        // [owner] = await hre.ethers.getSigners();
-        // ownerAddress = await owner.getAddress();
-        // provider = owner.provider!;
-        // const sfDeployer = await deployTestFramework();
-
         // GETTING SUPERFLUID FRAMEWORK SET UP
-
         // deploy the framework locally
         const contractsFramework = await sfDeployer.getFramework();
 
@@ -131,7 +122,6 @@ describe("Test NFT Superfluid Lending pool", async () => {
         const nftTokenId = 1;
 
         await mintNftToOwner(nftTokenId);
-
         const daiBal = await daix.balanceOf({
             account: ownerAddress,
             providerOrSigner: owner
@@ -214,8 +204,10 @@ describe("Test NFT Superfluid Lending pool", async () => {
             loanAmount);
 
         // Cancel flow rate
-        await daix.deleteFlow({ sender: owner.address, 
-            receiver: nftLendingPoolContract.address }).exec(owner);
+        await daix.deleteFlow({
+            sender: owner.address,
+            receiver: nftLendingPoolContract.address
+        }).exec(owner);
 
         const updatedOwnerFlowRate = await daix.getNetFlow({
             account: ownerAddress,
@@ -223,13 +215,10 @@ describe("Test NFT Superfluid Lending pool", async () => {
         })
         console.log(`updated ${updatedOwnerFlowRate}`);
         expect(updatedOwnerFlowRate).to.eq('0');
-        console.log('here');
 
-        console.log('here 2');
         const updatedNftBalance = await nft.balanceOf(nftLendingPoolContract.address);
         console.log('address nft chest', await nftLendingPoolContract.nftChest());
         expect(updatedNftBalance).to.be.equal(0);
-        console.log('here 3');
 
         // ToDo - Assert borrowAmount == 0
         const updatedBorrowAmount = await nftLendingPoolContract.borrowAmount();
@@ -258,7 +247,7 @@ describe("Test NFT Superfluid Lending pool", async () => {
         })
         console.log(`updated ${updatedOwnerFlowRate}`);
 
-        const expectedFlowRate = -loanAmount/2 * interestRate / 100;
+        const expectedFlowRate = -loanAmount / 2 * interestRate / 100;
         expect(parseInt(updatedOwnerFlowRate)).to.be.equal(expectedFlowRate);
     });
 
@@ -277,7 +266,45 @@ describe("Test NFT Superfluid Lending pool", async () => {
 
         const flowRate = await nftLendingPoolContract.getPaymentFlowRate();
         console.log('flowRate', flowRate.toString());
-        expect(flowRate).to.be.equal('10');        
+        expect(flowRate).to.be.equal('10');
+    });
+
+    it('User gets NFT back if full amount is repaid', async () => {
+        const nftTokenId = 6;
+
+        await mintNftToOwner(nftTokenId);
+
+        //await nft.approve(nftLendingPoolContract.address, nftTokenId);
+        await nft.connect(owner).setApprovalForAll(nftLendingPoolContract.address, true);
+
+        console.log('owner of', await nft.ownerOf(nftTokenId));
+        console.log('approved ts', await nft.getApproved(nftTokenId));
+
+        await nftLendingPoolContract.depositCollateral(nftTokenId);
+
+        const loanAmount = 100;
+
+        //await nft.setApprovalForAll(nftLendingPoolContract.address, true);
+
+
+        await nftLendingPoolContract.borrowAgainstCollateral(
+            loanAmount);
+
+        await nftLendingPoolContract.repay(loanAmount);
+
+        const updatedOwnerFlowRate = await daix.getNetFlow({
+            account: ownerAddress,
+            providerOrSigner: owner
+        })
+        console.log(`updated ${updatedOwnerFlowRate}`);
+        expect(updatedOwnerFlowRate).to.eq('0');
+
+        // ToDo - Assert nft was returned
+        const updatedNftBalanceContract = await nft.balanceOf(nftLendingPoolContract.address);
+        expect(updatedNftBalanceContract).to.be.equal(0);
+
+        const updatedNftBalanceUser = await nft.balanceOf(ownerAddress);
+        expect(updatedNftBalanceUser).to.be.equal(1);
     });
 
 });

@@ -30,8 +30,9 @@ contract NFTLendingPool is IERC721Receiver, SuperAppBase {
     // ToDo - add owner
     /// @notice Total amount borrowed.
     int256 public borrowAmount;
-    uint256 public loanStartTime;
     uint256 public tokenId; // set when collateral is deposited
+    int256 public maxBorrowAmount = 1000 * (10**18);
+    address borrower;
 
     using SuperTokenV1Library for ISuperToken;
 
@@ -86,10 +87,14 @@ contract NFTLendingPool is IERC721Receiver, SuperAppBase {
 
     function depositCollateral(uint256 _tokenId) public {
         tokenId = _tokenId;
+        //nft.setApprovalForAll(address(this), true);
         nft.safeTransferFrom(msg.sender, address(this), tokenId);
+        borrower = msg.sender;
     }
 
     function borrowAgainstCollateral(int256 amount) public {
+        require(amount < maxBorrowAmount);
+        require(msg.sender == borrower);
         int96 borrowerFlowRate = acceptedToken.getFlowRate(
             msg.sender,
             address(this)
@@ -107,7 +112,7 @@ contract NFTLendingPool is IERC721Receiver, SuperAppBase {
     }
 
     function repay(int256 amount) public {
-        // repay
+        require(amount < maxBorrowAmount);
         require(
             underlyingToken.transferFrom(
                 msg.sender,
@@ -125,6 +130,7 @@ contract NFTLendingPool is IERC721Receiver, SuperAppBase {
 
         if (flowRate == 0) {
             acceptedToken.deleteFlowFrom(msg.sender, address(this));
+            nft.safeTransferFrom(address(this), msg.sender, tokenId);
         } else {
             acceptedToken.updateFlowFrom(msg.sender, address(this), flowRate);
         }
@@ -213,7 +219,7 @@ contract NFTLendingPool is IERC721Receiver, SuperAppBase {
         bytes calldata _ctx
     )
         external
-        view 
+        view
         override
         onlyExpected(_superToken, _agreementClass)
         onlyHost
