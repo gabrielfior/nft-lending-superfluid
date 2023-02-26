@@ -1,8 +1,8 @@
-import {SuperToken} from "@superfluid-finance/sdk-core";
+import { SuperToken } from "@superfluid-finance/sdk-core";
 import * as hre from "hardhat";
-import {Provider} from "@ethersproject/providers";
-import {MintableNFT, NFTLendingPool, TestToken} from "../typechain-types";
-import {expect} from "chai";
+import { Provider } from "@ethersproject/providers";
+import { MintableNFT, NFTLendingPool, TestToken } from "../typechain-types";
+import { expect } from "chai";
 
 const { Framework } = require("@superfluid-finance/sdk-core");
 const { deployTestFramework } = require("@superfluid-finance/ethereum-contracts/dev-scripts/deploy-test-framework");
@@ -12,7 +12,7 @@ const thousandEther = hre.ethers.utils.parseEther("1000");
 
 describe("Test NFT Superfluid Lending pool", async () => {
 
-    let a: number;
+    let sfDeployer: any;
     let daix: SuperToken;
     let dai: TestToken;
     let owner: hre.ethers.Signer;
@@ -26,17 +26,23 @@ describe("Test NFT Superfluid Lending pool", async () => {
 
     before(async () => {
         console.log('entered before');
+        //get accounts from hardhat
+        [owner] = await hre.ethers.getSigners();
+        ownerAddress = await owner.getAddress();
+        provider = owner.provider!;
+
+        sfDeployer = await deployTestFramework();
     });
 
     beforeEach(async () => {
 
         // from https://github.com/superfluid-finance/super-examples/blob/main/projects/tradeable-cashflow/test/TradeableCashflow.test.js
 
-        //get accounts from hardhat
-        [owner] = await hre.ethers.getSigners();
-        ownerAddress = await owner.getAddress();
-        provider = owner.provider!;
-        const sfDeployer = await deployTestFramework();
+        // //get accounts from hardhat
+        // [owner] = await hre.ethers.getSigners();
+        // ownerAddress = await owner.getAddress();
+        // provider = owner.provider!;
+        // const sfDeployer = await deployTestFramework();
 
         // GETTING SUPERFLUID FRAMEWORK SET UP
 
@@ -79,7 +85,6 @@ describe("Test NFT Superfluid Lending pool", async () => {
         nftLendingPoolContract = await NFTLendingPool.deploy(
             nft.address,
             interestRate,
-            12,
             hostAddress,
             cfaV1Address,
             daix.address,
@@ -102,10 +107,12 @@ describe("Test NFT Superfluid Lending pool", async () => {
         await dai.connect(owner).approve(nftLendingPoolContract.address, hre.ethers.constants.MaxInt256);
 
         // transfer to contract
-        await daix.transferFrom({sender: owner.address,
-              receiver: nftLendingPoolContract.address,
-              amount: (thousandEther.div(2)).toString()}).exec(owner);
-        
+        await daix.transferFrom({
+            sender: owner.address,
+            receiver: nftLendingPoolContract.address,
+            amount: (thousandEther.div(2)).toString()
+        }).exec(owner);
+
         console.log('balance owner dai', await dai.balanceOf(owner.address));
 
         const authorize = await daix.authorizeFlowOperatorWithFullControl({ flowOperator: nftLendingPoolContract.address.toLowerCase() });
@@ -120,7 +127,7 @@ describe("Test NFT Superfluid Lending pool", async () => {
         await nft.approve(nftLendingPoolContract.address, tokenId);
     }
 
-    xit("user can borrow 100 DAI", async () => {
+    it("user can borrow 100 DAI", async () => {
         const nftTokenId = 1;
 
         await mintNftToOwner(nftTokenId);
@@ -136,10 +143,8 @@ describe("Test NFT Superfluid Lending pool", async () => {
         expect(updatedNftBalance).to.be.equal(0);
 
         const loanAmount = 100;
-        console.log('before');
         await nftLendingPoolContract.borrowAgainstCollateral(
-            hre.ethers.utils.parseEther(loanAmount.toString()));
-        console.log('after');
+            loanAmount);
 
         const ownerFlowRate = await daix.getNetFlow({
             account: ownerAddress,
@@ -150,10 +155,10 @@ describe("Test NFT Superfluid Lending pool", async () => {
         expect(parseInt(ownerFlowRate)).to.be.equal(expectedFlowRate);
 
         const ownerDaiAmount = await dai.balanceOf(owner.address);
-        expect(ownerDaiAmount).to.eq(hre.ethers.utils.parseEther(loanAmount.toString()));
+        expect(ownerDaiAmount).to.eq(loanAmount);
     });
 
-    xit('Repay loan and check that flow stopps', async () => {
+    it('Repay loan and check that flow stopps', async () => {
         // Other test -
         // Repay remaining amount (check that flow stopped)
         const nftTokenId = 2;
@@ -171,16 +176,13 @@ describe("Test NFT Superfluid Lending pool", async () => {
 
         const loanAmount = 100;
 
-        await nftLendingPoolContract.borrowAgainstCollateral(hre.ethers.utils.parseEther(loanAmount.toString()));
+        await nftLendingPoolContract.borrowAgainstCollateral(loanAmount);
         console.log('after borrow');
         console.log('curr balance dai owner', await dai.balanceOf(owner.address));
 
-
-        //const expectedFlowRate = -loanAmount * interestRate / 100;
-
         // repay
         console.log('repay');
-        await nftLendingPoolContract.repay(hre.ethers.utils.parseEther(loanAmount.toString()));
+        await nftLendingPoolContract.repay(loanAmount);
         const updatedOwnerFlowRate = await daix.getNetFlow({
             account: ownerAddress,
             providerOrSigner: owner
@@ -191,6 +193,8 @@ describe("Test NFT Superfluid Lending pool", async () => {
         const ownerBalanceDai = await dai.balanceOf(owner.address);
         expect(ownerBalanceDai).to.equal(0);
     });
+
+
 
     it('User gets liquidated if delete flow attempt is executed', async () => {
         // Other test
@@ -205,12 +209,13 @@ describe("Test NFT Superfluid Lending pool", async () => {
         await nftLendingPoolContract.depositCollateral(nftTokenId);
 
         const loanAmount = 100;
-        
+
         await nftLendingPoolContract.borrowAgainstCollateral(
-            hre.ethers.utils.parseEther(loanAmount.toString()));
-        
+            loanAmount);
+
         // Cancel flow rate
-        await daix.deleteFlow({sender: owner.address, receiver: nftLendingPoolContract.address}).exec(owner);
+        await daix.deleteFlow({ sender: owner.address, 
+            receiver: nftLendingPoolContract.address }).exec(owner);
 
         const updatedOwnerFlowRate = await daix.getNetFlow({
             account: ownerAddress,
@@ -218,20 +223,61 @@ describe("Test NFT Superfluid Lending pool", async () => {
         })
         console.log(`updated ${updatedOwnerFlowRate}`);
         expect(updatedOwnerFlowRate).to.eq('0');
-        
+        console.log('here');
 
-        // ToDo - Assert liquidation occurred - NFT has been moved
+        console.log('here 2');
+        const updatedNftBalance = await nft.balanceOf(nftLendingPoolContract.address);
+        console.log('address nft chest', await nftLendingPoolContract.nftChest());
+        expect(updatedNftBalance).to.be.equal(0);
+        console.log('here 3');
 
         // ToDo - Assert borrowAmount == 0
-
+        const updatedBorrowAmount = await nftLendingPoolContract.borrowAmount();
+        expect(updatedBorrowAmount).to.equal(0);
     });
 
-    xit('a', () => {
+    it('Repaying 50 DAI updates user flow to 50 xDAI', async () => {
         // Other test
         // - Deposit NFT
         // - Borrow 100 DAI (should create a fDAIx flow) - check that flow is created
         // - Repay 50
         // - Assert flow updated to 50
+        const nftTokenId = 4;
+        await mintNftToOwner(nftTokenId);
+        await nftLendingPoolContract.depositCollateral(nftTokenId);
+
+        const loanAmount = 100;
+
+        await nftLendingPoolContract.borrowAgainstCollateral(loanAmount);
+
+        await nftLendingPoolContract.repay(loanAmount / 2);
+
+        const updatedOwnerFlowRate = await daix.getNetFlow({
+            account: ownerAddress,
+            providerOrSigner: owner
+        })
+        console.log(`updated ${updatedOwnerFlowRate}`);
+
+        const expectedFlowRate = -loanAmount/2 * interestRate / 100;
+        expect(parseInt(updatedOwnerFlowRate)).to.be.equal(expectedFlowRate);
+    });
+
+    it('flow rate calculated correctly', async () => {
+        // deposit NFT
+        // borrow 100 DAI
+        // assert flow rate is 100 DAIx
+        const nftTokenId = 5;
+        await mintNftToOwner(nftTokenId);
+        await nftLendingPoolContract.depositCollateral(nftTokenId);
+
+        const loanAmount = 100;
+
+        await nftLendingPoolContract.borrowAgainstCollateral(
+            loanAmount);
+
+        const flowRate = await nftLendingPoolContract.getPaymentFlowRate();
+        console.log('flowRate', flowRate.toString());
+        expect(flowRate).to.be.equal('10');        
     });
 
 });
